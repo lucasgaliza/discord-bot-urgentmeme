@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import commands
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import feedparser
 import random
 from keep_alive import keep_alive
@@ -55,5 +56,46 @@ async def send_meme(ctx):
     ]
     await ctx.send(random.choice(memes))
 
+@bot.command(name="gozão")
+async def gozao_command(ctx, *, prompt: str = None):
+    if prompt is None:
+        await ctx.send("Opa! Você precisa escrever algo depois do comando. Ex: `!gozão explique o que são buracos negros`")
+        return
+
+    async with ctx.typing():
+        try:
+            generation_config = {
+                "max_output_tokens": 512,
+                "temperature": 0.9,
+            }
+
+            safety_settings = {
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+
+            response = model.generate_content(
+                prompt,
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
+
+            if response.text:
+                answer = f"Paizão, é o seguinte: {response.text}"
+            else:
+                answer = "Paizão, é o seguinte: Você falou tanta bosta que nem minhas entradas captaram."
+
+            # 5. Send (handling Discord limit)
+            if len(answer) > 2000:
+                await ctx.send(answer[:1900] + "\n\n**(Continua... resposta cortada pelo limite do Discord)**")
+            else:
+                await ctx.send(answer)
+
+        except Exception as e:
+            await ctx.send(f"Deu ruim no Gemini: {e}")
+
+# --- MAIN EXECUTION ---
 keep_alive()
 bot.run(DISCORD_TOKEN)
