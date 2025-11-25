@@ -51,9 +51,7 @@ async def get_news(ctx, topic="technology"):
 @bot.command(name="meme")
 async def send_meme(ctx):
     memes = [
-        "https://i.imgur.com/W0nxf.jpg",
-        "https://i.imgur.com/1X7kG.jpg",
-        "https://i.imgur.com/5c4d3.jpg"
+        "https://cdn.discordapp.com/attachments/1302528042224324618/1428482038402519062/WhatsApp_Image_2025-10-16_at_17.33.47.jpeg?ex=69261391&is=6924c211&hm=66b83e1a15df04d0d1a23fe737b96aa5cbc70d7f3eca0c7aff5499dc2f783305&",
     ]
     await ctx.send(random.choice(memes))
 
