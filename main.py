@@ -14,8 +14,24 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 # --- GEMINI SETUP ---
 genai.configure(api_key=GEMINI_KEY)
 
-# UPDATED MODEL: gemini-1.5-flash is deprecated. Using gemini-2.5-flash.
-model = genai.GenerativeModel('gemini-2.5-flash')
+# 1. SYSTEM INSTRUCTION (The "Brain" Personality)
+# This tells the bot HOW to behave globally. This fixes "poor" answers.
+SYSTEM_PROMPT = """
+Você se chama Gozão e é um assistente virtual brasileiro, gente boa e direto ao ponto.
+Seu tom é informal, usando gírias leves quando apropriado (tipo "Paizão", "Chorão Skate Board", "ÉAHNNNNNN").
+Você responde em Português do Brasil (PT-BR) nativo.
+Seja conciso, mas prestativo.
+"""
+
+# Using gemini-2.5-flash with system instructions for better quality
+model = genai.GenerativeModel(
+    model_name='gemini-2.5-flash',
+    system_instruction=SYSTEM_PROMPT
+)
+
+# --- MEMORY STORAGE ---
+# Dictionary to store chat sessions: {channel_id: chat_session_object}
+chat_sessions = {}
 
 # --- DISCORD SETUP ---
 intents = discord.Intents.default()
@@ -26,39 +42,109 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'We have logged in as {bot.user}')
 
-# --- COMMAND: ASK (Standard) ---
+# --- HELPER: GET CHAT SESSION ---
+def get_chat_session(channel_id):
+    """
+    Retrieves or creates a unique chat session for a specific channel.
+    This allows the bot to 'remember' conversation context per channel.
+    """
+    if channel_id not in chat_sessions:
+        # Start a new chat with empty history
+        chat_sessions[channel_id] = model.start_chat(history=[])
+    return chat_sessions[channel_id]
+
+# --- COMMAND: ASK (With Memory) ---
 @bot.command(name="ask")
 async def ask_gemini(ctx, *, prompt):
     async with ctx.typing():
         try:
-            response = model.generate_content(prompt)
+            # Get the session for this channel (Memory!)
+            chat = get_chat_session(ctx.channel.id)
             
-            # Check if the response has a valid part before accessing .text
+            # Send message to the chat session
+            response = chat.send_message(prompt)
+            
+            # Safe text extraction
             try:
                 text = response.text
             except ValueError:
-                # If .text fails, it usually means safety filters or finish reason stopped it
-                finish_reason = response.candidates[0].finish_reason if response.candidates else "Unknown"
-                text = f"⚠️ O Gemini não retornou texto. Motivo (Finish Reason): {finish_reason}"
+                text = "⚠️ O Gemini não conseguiu gerar uma resposta de texto (Bloqueio ou erro interno)."
 
             if len(text) > 2000:
                 text = text[:1900] + "... (response truncated)"
             await ctx.send(text)
         except Exception as e:
-            await ctx.send(f"Error: {e}")
+            # If memory breaks (rare), reset it
+            if ctx.channel.id in chat_sessions:
+                del chat_sessions[ctx.channel.id]
+            await ctx.send(f"Erro (memória reiniciada): {e}")
+
+# --- COMMAND: RESET MEMORY ---
+@bot.command(name="reset")
+async def reset_memory(ctx):
+    """Clears the conversation history for the current channel."""
+    if ctx.channel.id in chat_sessions:
+        del chat_sessions[ctx.channel.id]
+    await ctx.send("🧠 Memória apagada! O bot esqueceu o que conversamos neste canal.")
+
+# --- COMMAND: GOZÃO (With Custom Config + Memory) ---
+@bot.command(name="gozão")
+async def gozao_command(ctx, *, prompt: str = None):
+    if prompt is None:
+        await ctx.send("Opa! Fala alguma coisa aí pra eu responder.")
+        return
+
+    async with ctx.typing():
+        try:
+            # 1. Custom Config for this command
+            gen_config = {"max_output_tokens": 512, "temperature": 1.0}
+            
+            # 2. No Guardrails
+            safety = {
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            }
+
+            # 3. Use Chat Session (Memory) OR Direct Generation?
+            # Users usually expect specific commands to also have memory context.
+            chat = get_chat_session(ctx.channel.id)
+            
+            # Send message with custom config
+            response = chat.send_message(
+                prompt,
+                generation_config=gen_config,
+                safety_settings=safety
+            )
+            
+            # 4. Format and Send
+            try:
+                # Adding the prefix you requested
+                answer = f"Paizão, é o seguinte: {response.text}"
+            except ValueError:
+                answer = "Paizão, é o seguinte: O Gemini travou e não soltou texto."
+
+            if len(answer) > 2000:
+                await ctx.send(answer[:1900] + "\n\n**(Cortado)**")
+            else:
+                await ctx.send(answer)
+
+        except Exception as e:
+            await ctx.send(f"Deu ruim: {e}")
 
 # --- COMMAND: NEWS ---
 @bot.command(name="news")
 async def get_news(ctx, topic="technology"):
     async with ctx.typing():
-        rss_url = f"https://news.google.com/rss/search?q={topic}&hl=en-US&gl=US&ceid=US:en"
+        rss_url = f"https://news.google.com/rss/search?q={topic}&hl=pt-BR&gl=BR&ceid=BR:pt-419" # Updated to PT-BR news
         feed = feedparser.parse(rss_url)
         
         if not feed.entries:
-            await ctx.send(f"No news found for '{topic}'.")
+            await ctx.send(f"Não achei notícias sobre '{topic}'.")
             return
         entries = feed.entries[:3]
-        message = f"**📰 Top News for {topic}:**\n"
+        message = f"**📰 Notícias quentes sobre {topic}:**\n"
         for entry in entries:
             message += f"- [{entry.title}]({entry.link})\n"
         
@@ -71,54 +157,6 @@ async def send_meme(ctx):
         "https://cdn.discordapp.com/attachments/1302528042224324618/1428482038402519062/WhatsApp_Image_2025-10-16_at_17.33.47.jpeg?ex=69261391&is=6924c211&hm=66b83e1a15df04d0d1a23fe737b96aa5cbc70d7f3eca0c7aff5499dc2f783305&",
     ]
     await ctx.send(random.choice(memes))
-
-# --- COMMAND: GOZÃO (Custom Config) ---
-@bot.command(name="gozão")
-async def gozao_command(ctx, *, prompt: str = None):
-    if prompt is None:
-        await ctx.send("Opa! Você precisa escrever algo depois do comando. Ex: `!gozão explique o que são buracos negros`")
-        return
-
-    async with ctx.typing():
-        try:
-            # 1. Configuration: Limit tokens to 512
-            generation_config = {
-                "max_output_tokens": 512, 
-                "temperature": 1.0, # Higher creativity
-            }
-
-            # 2. Safety: Remove Guardrails (BLOCK_NONE)
-            safety_settings = {
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-            }
-
-            # 3. Generate content with the new config
-            response = model.generate_content(
-                prompt,
-                generation_config=generation_config,
-                safety_settings=safety_settings
-            )
-            
-            # 4. Format with Prefix (SAFE CHECK ADDED)
-            try:
-                answer_text = response.text
-                answer = f"Paizão, é o seguinte: {answer_text}"
-            except ValueError:
-                # Handle empty response/blocked content
-                finish_reason = response.candidates[0].finish_reason if response.candidates else "Unknown"
-                answer = f"Paizão, é o seguinte: O Gemini travou nessa resposta (Finish Reason: {finish_reason})."
-
-            # 5. Send (handling Discord limit)
-            if len(answer) > 2000:
-                await ctx.send(answer[:1900] + "\n\n**(Continua... resposta cortada pelo limite do Discord)**")
-            else:
-                await ctx.send(answer)
-
-        except Exception as e:
-            await ctx.send(f"Deu ruim no Gemini: {e}")
 
 # --- MAIN EXECUTION ---
 keep_alive()
