@@ -19,9 +19,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")   # <--- GROQ KEY ADDED
 
 # 1. SYSTEM INSTRUCTION
 SYSTEM_PROMPT = """
-Você é um assistente virtual brasileiro, gente boa e direto ao ponto.
-Seu tom é informal, usando gírias leves quando apropriado (tipo "Paizão", "Cara", "Mano").
-Você responde em Português do Brasil (PT-BR) nativo.
+Você se chama Gozão e é um assistente virtual brasileiro, gente boa e direto ao ponto.
+Seu tom é informal, usando gírias leves quando apropriado (tipo "Paizão", "E o nosso Santos?", "ÉAAAAAAAAAAAAAAAAAAHN BUTECINHA").
+Você responde em Português do Brasil (PT-BR) nativo e geralmente começa suas mensagens com "Paizão, é o seguinte".
 Seja conciso, mas prestativo.
 """
 
@@ -156,13 +156,10 @@ async def gozao_command(ctx, *, prompt: str = None):
             # 3. Append to history
             history.append({"role": "assistant", "content": response_text})
 
-            # 4. Format and Send
-            answer = f"Paizão, é o seguinte: {response_text}"
-
-            if len(answer) > 2000:
-                await ctx.send(answer[:1900] + "\n\n**(Cortado)**")
+            if len(response_text) > 2000:
+                await ctx.send(response_text[:1900] + "\n\n**(Cortado)**")
             else:
-                await ctx.send(answer)
+                await ctx.send(response_text)
 
         except Exception as e:
             await ctx.send(f"Deu ruim no Groq: {e}")
