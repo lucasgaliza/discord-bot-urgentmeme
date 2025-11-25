@@ -7,12 +7,17 @@ import feedparser
 import random
 from keep_alive import keep_alive
 
+# --- CONFIGURATION ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
+# --- GEMINI SETUP ---
 genai.configure(api_key=GEMINI_KEY)
+
+# UPDATED MODEL: gemini-1.5-flash is deprecated. Using gemini-2.5-flash.
 model = genai.GenerativeModel('gemini-2.5-flash')
 
+# --- DISCORD SETUP ---
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
@@ -21,18 +26,28 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'We have logged in as {bot.user}')
 
+# --- COMMAND: ASK (Standard) ---
 @bot.command(name="ask")
 async def ask_gemini(ctx, *, prompt):
     async with ctx.typing():
         try:
             response = model.generate_content(prompt)
-            text = response.text
+            
+            # Check if the response has a valid part before accessing .text
+            try:
+                text = response.text
+            except ValueError:
+                # If .text fails, it usually means safety filters or finish reason stopped it
+                finish_reason = response.candidates[0].finish_reason if response.candidates else "Unknown"
+                text = f"⚠️ O Gemini não retornou texto. Motivo (Finish Reason): {finish_reason}"
+
             if len(text) > 2000:
                 text = text[:1900] + "... (response truncated)"
             await ctx.send(text)
         except Exception as e:
             await ctx.send(f"Error: {e}")
 
+# --- COMMAND: NEWS ---
 @bot.command(name="news")
 async def get_news(ctx, topic="technology"):
     async with ctx.typing():
@@ -49,6 +64,7 @@ async def get_news(ctx, topic="technology"):
         
         await ctx.send(message)
 
+# --- COMMAND: MEME ---
 @bot.command(name="meme")
 async def send_meme(ctx):
     memes = [
@@ -56,6 +72,7 @@ async def send_meme(ctx):
     ]
     await ctx.send(random.choice(memes))
 
+# --- COMMAND: GOZÃO (Custom Config) ---
 @bot.command(name="gozão")
 async def gozao_command(ctx, *, prompt: str = None):
     if prompt is None:
@@ -64,11 +81,13 @@ async def gozao_command(ctx, *, prompt: str = None):
 
     async with ctx.typing():
         try:
+            # 1. Configuration: Limit tokens to 512
             generation_config = {
-                "max_output_tokens": 512,
-                "temperature": 0.9,
+                "max_output_tokens": 512, 
+                "temperature": 1.0, # Higher creativity
             }
 
+            # 2. Safety: Remove Guardrails (BLOCK_NONE)
             safety_settings = {
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -76,16 +95,21 @@ async def gozao_command(ctx, *, prompt: str = None):
                 HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
             }
 
+            # 3. Generate content with the new config
             response = model.generate_content(
                 prompt,
                 generation_config=generation_config,
                 safety_settings=safety_settings
             )
-
-            if response.text:
-                answer = f"Paizão, é o seguinte: {response.text}"
-            else:
-                answer = "Paizão, é o seguinte: Você falou tanta bosta que nem minhas entradas captaram."
+            
+            # 4. Format with Prefix (SAFE CHECK ADDED)
+            try:
+                answer_text = response.text
+                answer = f"Paizão, é o seguinte: {answer_text}"
+            except ValueError:
+                # Handle empty response/blocked content
+                finish_reason = response.candidates[0].finish_reason if response.candidates else "Unknown"
+                answer = f"Paizão, é o seguinte: O Gemini travou nessa resposta (Finish Reason: {finish_reason})."
 
             # 5. Send (handling Discord limit)
             if len(answer) > 2000:
