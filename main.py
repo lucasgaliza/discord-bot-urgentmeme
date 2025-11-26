@@ -31,7 +31,7 @@ target_news_channel_id = None
 
 intents = discord.Intents.default()
 intents.message_content = True
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
 @bot.event
 async def on_ready():
@@ -74,11 +74,6 @@ async def shorten_candidates(candidates, loop):
     return final_list
 
 async def generate_urgent_report_content(item_count=5):
-    """
-    Gera o relatório. 
-    item_count=5 para manual (!urgente).
-    item_count=10 para automático (loop).
-    """
     try:
         loop = asyncio.get_event_loop()
         
@@ -120,7 +115,7 @@ async def generate_urgent_report_content(item_count=5):
         for i, feed in enumerate(trend_feeds):
             topic_name = top_trends[i]
             if feed.entries:
-                for entry in feed.entries[:2]: # 2 noticias por trend ta bom
+                for entry in feed.entries[:2]:
                     raw_candidates.append({'source': f'TRENDING ({topic_name})', 'title': entry.title, 'link': entry.link})
 
         if feed_g1.entries:
@@ -140,7 +135,7 @@ async def generate_urgent_report_content(item_count=5):
         {news_data}
 
         TAREFA:
-        Relatório "URGENTE":
+        Relatório "URGENTE" (que canseira fazer isso...):
         
         SEÇÃO 1: ⚽ ESPORTES
         - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE).
@@ -154,8 +149,8 @@ async def generate_urgent_report_content(item_count=5):
         - Reclame um pouco no começo ou final.
         - MAX 1900 CARACTERES.
         
-        FORMATO FINAL:
-        🚨 **URGENTE** 🚨
+        FORMATO:
+        [Sua reclamação inicial estilo vítima/cervejeiro]
 
         ⚽ **ESPORTES**
         1. [Título] 
@@ -194,11 +189,26 @@ async def auto_news_loop():
             except Exception as e:
                 print(f"Auto loop error: {e}")
 
+@bot.command(name="help")
+async def help_command(ctx):
+    help_text = """
+    **MANUAL DO GOZÃO**
+
+    🍺 `!gozão [texto]` - Fala comigo. Vou reclamar da vida e te responder (se eu quiser).
+    🍺 `!news [tópico]` - Busco notícias sobre o que você pedir.
+    🍺 `!urgente` - Mando um resumão do que tá rolando agora (5 de Esporte, 5 Gerais). Também configurado pra mandar sozinho aqui a cada 2h.
+    🍺 `!meme` - Mando a única imagem que importa, por enquanto, estou aprendendo a ler o canal de memes.
+    🍺 `!reset` - Apago minha memória. Bom pra quando eu começo a falar muita besteira. Usa pra reiniciar meu contexto de diálogo com você.
+    
+    É isso, paizão.
+    """
+    await ctx.send(help_text)
+
 @bot.command(name="urgente")
 async def urgent_command(ctx):
     global target_news_channel_id
     target_news_channel_id = ctx.channel.id
-        
+
     async with ctx.typing():
         report = await generate_urgent_report_content(item_count=5)
         await ctx.send(report)
