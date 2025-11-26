@@ -387,7 +387,6 @@ async def get_news(ctx, *, topic="tecnologia"):
             5. MAX 1800 CHARS.
             """
 
-            # USANDO A NOVA FUNÇÃO COM FALLBACK
             response_text = await loop.run_in_executor(
                 None, 
                 lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.5, max_tokens=500)
