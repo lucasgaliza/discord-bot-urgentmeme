@@ -244,15 +244,11 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
 
             msg = random.choice(messages)
             
-            # CORRECTION HERE: Initialize the variable before adding to it
-            response_text = f"**🕵️ MEME DO GOZÃO**\n"
-            response_text += f"Roubei do {channel_target.mention} (quem mandou foi o **{msg.author.display_name}** em {msg.created_at.strftime('%d/%m/%Y')}):\n"
-            
             if msg.content:
-                response_text += f"\n>>> {msg.content}"
+                response_text = f"\n>>> {msg.content}"
 
             if msg.attachments:
-                response_text += f"\n{msg.attachments[0].url}"
+                response_text = f"\n{msg.attachments[0].url}"
             
             await ctx.send(response_text)
 
