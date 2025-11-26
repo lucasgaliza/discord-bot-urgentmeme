@@ -243,7 +243,7 @@ async def auto_news_loop():
                     report_sports = await generate_report_from_data(news_data, 'sports', 10)
                     await channel.send(report_sports)
                     
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(40)
                     
                     report_general = await generate_report_from_data(news_data, 'general', 10)
                     await channel.send(report_general)
