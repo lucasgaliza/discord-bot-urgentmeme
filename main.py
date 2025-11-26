@@ -8,6 +8,7 @@ import feedparser
 import random
 import urllib.request
 from urllib.parse import quote
+from datetime import datetime, timedelta, timezone
 from keep_alive import keep_alive
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -130,6 +131,7 @@ async def generate_urgent_report_content(item_count=5):
         news_data = "\n".join(candidates)
         
         curation_prompt = f"""
+        Persona: Você é o Gozão (vítima, reclama da vida, ama cerveja, curto e grosso).
         
         DADOS BRUTOS:
         {news_data}
@@ -196,18 +198,70 @@ async def help_command(ctx):
     🍺 `!gozão [texto]` - Fala comigo. Vou reclamar da vida e te responder (se eu quiser).
     🍺 `!news [tópico]` - Busco notícias sobre o que você pedir.
     🍺 `!urgente` - Mando um resumão do que tá rolando agora (5 de Esporte, 5 Gerais). Também configurado pra mandar sozinho aqui a cada 2h.
-    🍺 `!meme` - Mando a única imagem que importa, por enquanto, estou aprendendo a ler o canal de memes.
+    🍺 `!meme` - Trás uma mensagem aleatória do digo-menos (teste).
     🍺 `!reset` - Apago minha memória. Bom pra quando eu começo a falar muita besteira. Usa pra reiniciar meu contexto de diálogo com você.
     
     É isso, paizão.
     """
     await ctx.send(help_text)
 
+@bot.command(name="meme")
+async def meme_command(ctx, channel_target: discord.TextChannel = None):
+    if channel_target is None:
+        channel_target = discord.utils.get(ctx.guild.text_channels, name="digo-menos")
+        if channel_target is None:
+            await ctx.send("Mano, tu quer que eu adivinhe o canal? Não achei o #digo-menos e tu não marcou nada.")
+            return
+
+    await ctx.send(f"Tô indo lá no {channel_target.mention} ver se acho alguma coisa que preste...")
+
+    async with ctx.typing():
+        try:
+            start_date = channel_target.created_at
+            end_date = datetime.now(timezone.utc)
+            time_diff = end_date - start_date
+            
+            messages = []
+            
+            if time_diff.days > 1:
+                for _ in range(3):
+                    random_days = random.randrange(time_diff.days)
+                    random_date = start_date + timedelta(days=random_days)
+                    async for msg in channel_target.history(limit=30, around=random_date):
+                        if not msg.author.bot and (msg.content or msg.attachments):
+                            messages.append(msg)
+                    if messages:
+                        break
+            
+            if not messages:
+                async for msg in channel_target.history(limit=100):
+                    if not msg.author.bot and (msg.content or msg.attachments):
+                        messages.append(msg)
+
+            if not messages:
+                await ctx.send("O canal tá vazio ou só tem robô falando, paizão. Deu ruim.")
+                return
+
+            msg = random.choice(messages)
+            
+            if msg.content:
+                response_text += f"\n>>> {msg.content}"
+
+            if msg.attachments:
+                response_text += f"\n{msg.attachments[0].url}"
+            
+            await ctx.send(response_text)
+
+        except Exception as e:
+            await ctx.send(f"Mano, fui barrado na porta. Não tenho permissão pra ler aquele canal não.")
+
 @bot.command(name="urgente")
 async def urgent_command(ctx):
     global target_news_channel_id
     target_news_channel_id = ctx.channel.id
-
+    
+    await ctx.send("Aff, lá vem você pedir coisa... tá bom, vou ver o que tá rolando (só pra garantir minha cerveja).")
+    
     async with ctx.typing():
         report = await generate_urgent_report_content(item_count=5)
         await ctx.send(report)
@@ -286,7 +340,7 @@ async def get_news(ctx, *, topic="tecnologia"):
 @bot.command(name="gozão")
 async def gozao_command(ctx, *, prompt: str = None):
     if prompt is None:
-        await ctx.send("Morra Pancres!")
+        await ctx.send("Fala logo o que tu quer, tô com sede.")
         return
 
     async with ctx.typing():
@@ -313,13 +367,6 @@ async def gozao_command(ctx, *, prompt: str = None):
 
         except Exception as e:
             await ctx.send(f"Deu ruim no Groq, até a IA me odeia: {e}")
-
-@bot.command(name="meme")
-async def send_meme(ctx):
-    memes = [
-        "https://cdn.discordapp.com/attachments/1302528042224324618/1428482038402519062/WhatsApp_Image_2025-10-16_at_17.33.47.jpeg?ex=69261391&is=6924c211&hm=66b83e1a15df04d0d1a23fe737b96aa5cbc70d7f3eca0c7aff5499dc2f783305&",
-    ]
-    await ctx.send(random.choice(memes))
 
 @bot.command(name="reset")
 async def reset_memory(ctx):
