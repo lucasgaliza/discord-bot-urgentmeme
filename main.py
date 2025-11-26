@@ -129,7 +129,6 @@ async def generate_urgent_report_content(item_count=5):
         news_data = "\n".join(candidates)
         
         curation_prompt = f"""
-        Persona: Você é o Gozão (vítima, reclama da vida, ama cerveja, curto e grosso).
         
         DADOS BRUTOS:
         {news_data}
@@ -138,7 +137,7 @@ async def generate_urgent_report_content(item_count=5):
         Relatório "URGENTE":
         
         SEÇÃO 1: ⚽ ESPORTES
-        - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE).
+        - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE). Ignore notícias que são só anúncios de partidas ou resultados.
         
         SEÇÃO 2: 🌍 GERAL & TRENDS
         - Selecione as {item_count} notícias mais importantes de GERAL (G1) ou TRENDING.
@@ -146,7 +145,6 @@ async def generate_urgent_report_content(item_count=5):
         REGRAS:
         - Títulos curtos.
         - APENAS Título e Link. Sem resumo (tô com preguiça).
-        - Reclame um pouco no começo ou final.
         - MAX 1900 CARACTERES.
         
         FORMATO FINAL:
@@ -157,7 +155,7 @@ async def generate_urgent_report_content(item_count=5):
         🔗 [Link]
         ...
 
-        🌍 **MUNDO CAÓTICO**
+        🌍 **MUNDO**
         1. [Título]
         🔗 [Link]
         ...
@@ -287,7 +285,7 @@ async def get_news(ctx, *, topic="tecnologia"):
 @bot.command(name="gozão")
 async def gozao_command(ctx, *, prompt: str = None):
     if prompt is None:
-        await ctx.send("Fala logo o que tu quer, tô com sede.")
+        await ctx.send("Morra Pancres!")
         return
 
     async with ctx.typing():
