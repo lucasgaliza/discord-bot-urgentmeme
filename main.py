@@ -31,15 +31,12 @@ chat_sessions = {}
 SESSION_TIMEOUT = 3600
 target_news_channel_id = None
 
+meme_counter = 0
+
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents, help_command=None)
 
-@bot.event
-async def on_ready():
-    print(f'We have logged in as {bot.user}')
-    if not auto_news_loop.is_running():
-        auto_news_loop.start()
 
 def get_chat_history(channel_id, user_id):
     key = (channel_id, user_id)
@@ -74,6 +71,40 @@ async def shorten_candidates(candidates, loop):
     for i, c in enumerate(candidates):
         final_list.append(f"FONTE: {c['source']} | TÍTULO: {c['title']} | LINK: {shortened_links[i]}")
     return final_list
+
+async def send_random_meme(channel_target):
+    start_date = channel_target.created_at
+    end_date = datetime.now(timezone.utc)
+    time_diff = end_date - start_date
+
+    messages = []
+
+    if time_diff.days > 1:
+        for _ in range(3):
+            random_days = random.randrange(time_diff.days)
+            random_date = start_date + timedelta(days=random_days)
+            async for msg in channel_target.history(limit=30, around=random_date):
+                if not msg.author.bot and (msg.content or msg.attachments):
+                    messages.append(msg)
+            if messages:
+                break
+
+    if not messages:
+        async for msg in channel_target.history(limit=100):
+            if not msg.author.bot and (msg.content or msg.attachments):
+                messages.append(msg)
+
+    if not messages:
+        return
+
+    msg = random.choice(messages)
+
+    if msg.content:
+        response_text = f"\n>>> {msg.content}"
+    else:
+        response_text = f"\n{msg.attachments[0].url}"
+
+    await channel_target.send(response_text)
 
 async def generate_urgent_report_content(item_count=5):
     try:
@@ -131,33 +162,33 @@ async def generate_urgent_report_content(item_count=5):
         news_data = "\n".join(candidates)
         
         curation_prompt = f"""
-        Persona: Você é o Gozão (vítima, reclama da vida, ama cerveja, curto e grosso).
         
         DADOS BRUTOS:
         {news_data}
 
         TAREFA:
         Relatório "URGENTE":
-        
+
         SEÇÃO 1: ⚽ ESPORTES
-        - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE). Ignore notícias que são só anúncios de partidas ou resultados.
-        
+        - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE).
+        - Ignore notícias que são só anúncios de partidas ou placares.
+
         SEÇÃO 2: 🌍 GERAL & TRENDS
         - Selecione as {item_count} notícias mais importantes de GERAL (G1) ou TRENDING.
 
         REGRAS:
         - Títulos curtos.
-        - APENAS Título e Link. Sem resumo (tô com preguiça).
-        - MAX 1900 CARACTERES.
-        
+        - NÃO FAÇA resumo. Só Título e Link.
+        - Máximo de 1900 caracteres por bloco.
+
         FORMATO FINAL:
         **URGENTE**
-
+        
         ⚽ **ESPORTES**
-        1. [Título] 
+        1. [Título]
         🔗 [Link]
         ...
-
+        
         🌍 **MUNDO**
         1. [Título]
         🔗 [Link]
@@ -168,27 +199,64 @@ async def generate_urgent_report_content(item_count=5):
             model=GROQ_MODEL,
             messages=[{"role": "user", "content": curation_prompt}],
             temperature=0.6,
-            max_tokens=600,
+            max_tokens=700,
             stream=False
         )
 
-        return completion.choices[0].message.content
+        full_report = completion.choices[0].message.content
+
+        try:
+            esporte_part = full_report.split("🌍")[0].strip()
+            geral_part = "🌍" + full_report.split("🌍")[1]
+        except:
+            esporte_part = full_report
+            geral_part = "Erro ao separar sessões."
+
+        return esporte_part, geral_part
 
     except Exception as e:
         print(f"Urgent Error: {e}")
         return f"A vida é injusta, deu erro até no meu relatório: {e}"
 
-@tasks.loop(hours=2)
+@tasks.loop(hours=1)
 async def auto_news_loop():
     global target_news_channel_id
     if target_news_channel_id:
         channel = bot.get_channel(target_news_channel_id)
         if channel:
             try:
-                report = await generate_urgent_report_content(item_count=10)
-                await channel.send(report)
+                esporte, geral = await generate_urgent_report_content(item_count=10)
+                await channel.send(esporte)
+                await channel.send(geral)
             except Exception as e:
                 print(f"Auto loop error: {e}")
+
+@tasks.loop(minutes=15)
+async def auto_meme_loop():
+    global meme_counter
+    global target_news_channel_id
+
+    meme_counter += 1
+
+    if meme_counter == 4:
+        meme_counter = 0
+        return  
+
+    if target_news_channel_id:
+        channel = bot.get_channel(target_news_channel_id)
+        if channel:
+            try:
+                await send_random_meme(channel)
+            except Exception as e:
+                print(f"Meme loop error: {e}")
+
+@bot.event
+async def on_ready():
+    print(f'We have logged in as {bot.user}')
+    if not auto_news_loop.is_running():
+        auto_news_loop.start()
+    if not auto_meme_loop.is_running():
+        auto_meme_loop.start()
 
 @bot.command(name="help")
 async def help_command(ctx):
@@ -210,48 +278,14 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
     if channel_target is None:
         channel_target = discord.utils.get(ctx.guild.text_channels, name="digo-menos")
         if channel_target is None:
-            await ctx.send("Mano, tu quer que eu adivinhe o canal? Não achei o #digo-menos e tu não marcou nada.")
+            await ctx.send("Mano, não achei o canal e tu não marcou nada.")
             return
 
     async with ctx.typing():
         try:
-            start_date = channel_target.created_at
-            end_date = datetime.now(timezone.utc)
-            time_diff = end_date - start_date
-            
-            messages = []
-            
-            if time_diff.days > 1:
-                for _ in range(3):
-                    random_days = random.randrange(time_diff.days)
-                    random_date = start_date + timedelta(days=random_days)
-                    async for msg in channel_target.history(limit=30, around=random_date):
-                        if not msg.author.bot and (msg.content or msg.attachments):
-                            messages.append(msg)
-                    if messages:
-                        break
-            
-            if not messages:
-                async for msg in channel_target.history(limit=100):
-                    if not msg.author.bot and (msg.content or msg.attachments):
-                        messages.append(msg)
-
-            if not messages:
-                await ctx.send("O canal tá vazio ou só tem robô falando, paizão. Deu ruim.")
-                return
-
-            msg = random.choice(messages)
-            
-            if msg.content:
-                response_text = f"\n>>> {msg.content}"
-
-            if msg.attachments:
-                response_text = f"\n{msg.attachments[0].url}"
-            
-            await ctx.send(response_text)
-
+            await send_random_meme(channel_target)
         except Exception as e:
-            await ctx.send(f"Mano, fui barrado na porta. Não tenho permissão pra ler aquele canal não. {e}")
+            await ctx.send(f"Mano, não tenho permissão == {e}")
 
 @bot.command(name="urgente")
 async def urgent_command(ctx):
@@ -259,8 +293,9 @@ async def urgent_command(ctx):
     target_news_channel_id = ctx.channel.id
         
     async with ctx.typing():
-        report = await generate_urgent_report_content(item_count=5)
-        await ctx.send(report)
+        esporte, geral = await generate_urgent_report_content(item_count=5)
+        await ctx.send(esporte)
+        await ctx.send(geral)
 
 @bot.command(name="news")
 async def get_news(ctx, *, topic="tecnologia"):
@@ -272,52 +307,46 @@ async def get_news(ctx, *, topic="tecnologia"):
             ge_url = "https://ge.globo.com/rss/ge/"
             
             loop = asyncio.get_event_loop()
-            feed_google_future = loop.run_in_executor(None, fetch_feed, google_url)
-            feed_g1_future = loop.run_in_executor(None, fetch_feed, g1_url)
-            feed_ge_future = loop.run_in_executor(None, fetch_feed, ge_url)
+            feeds = await asyncio.gather(
+                loop.run_in_executor(None, fetch_feed, google_url),
+                loop.run_in_executor(None, fetch_feed, g1_url),
+                loop.run_in_executor(None, fetch_feed, ge_url)
+            )
 
-            try:
-                feed_google, feed_g1, feed_ge = await asyncio.wait_for(
-                    asyncio.gather(feed_google_future, feed_g1_future, feed_ge_future),
-                    timeout=15.0 
-                )
-            except asyncio.TimeoutError:
-                await ctx.send("Mano, minha internet discada caiu aqui. Deu timeout, que fase.")
-                return
+            feed_google, feed_g1, feed_ge = feeds
 
             raw_candidates = []
             topic_keywords = [w.lower() for w in topic.split() if len(w) > 2]
 
-            def process_globo_feed(feed, source_label):
+            def process_feed(feed, source_name):
                 if feed.entries:
                     for entry in feed.entries:
-                        if any(k in entry.title.lower() for k in topic_keywords) or topic.lower() in entry.title.lower():
-                            raw_candidates.append({'source': source_label, 'title': entry.title, 'link': entry.link})
+                        if any(k in entry.title.lower() for k in topic_keywords):
+                            raw_candidates.append({'source': source_name, 'title': entry.title, 'link': entry.link})
 
-            process_globo_feed(feed_ge, "GloboEsporte")
-            process_globo_feed(feed_g1, "G1")
+            process_feed(feed_ge, "GloboEsporte")
+            process_feed(feed_g1, "G1")
 
             if feed_google.entries:
                 for entry in feed_google.entries[:10]:
-                    raw_candidates.append({'source': 'GoogleNews', 'title': entry.title, 'link': entry.link})
+                    raw_candidates.append({'source': "GoogleNews", 'title': entry.title, 'link': entry.link})
 
             if not raw_candidates:
-                await ctx.send(f"Pô cara, me esforcei aqui mas não achei nada de '{topic}'. Vida difícil.")
+                await ctx.send(f"Pô cara, procurei mas não achei nada de '{topic}'.")
                 return
 
             candidates = await shorten_candidates(raw_candidates, loop)
             news_data = "\n".join(candidates)
-            
+
             curation_prompt = f"""
-            Persona: Gozão (Vítima, cervejeiro, curto).
+            Persona: Gozão.
             Tópico: "{topic}".
             DADOS: {news_data}
-            TAREFA:
-            1. Selecione 3 a 5 notícias.
-            2. Priorize G1/GE.
-            3. SEM RESUMO. Só Título e Link.
-            4. Reclame da vida ou peça cerveja.
-            5. MAX 1800 CHARS.
+
+            - Selecione 3 a 5 notícias.
+            - Priorize G1/GE.
+            - Sem resumo.
+            - Só Título + Link.
             """
 
             completion = client.chat.completions.create(
@@ -327,14 +356,15 @@ async def get_news(ctx, *, topic="tecnologia"):
                 max_tokens=500,
                 stream=False
             )
+
             await ctx.send(completion.choices[0].message.content)
 
         except Exception as e:
-            print(f"News Error: {e}")
-            await ctx.send("Deu erro, é o universo conspirando contra mim.")
+            await ctx.send("Deu erro, mano.")
+            print(e)
 
 @bot.command(name="gozão")
-async def gozao_command(ctx, *, prompt: str = None):
+async def gozao_command(ctx, *, prompt=None):
     if prompt is None:
         await ctx.send("Fala logo o que tu quer, tô com sede.")
         return
@@ -352,26 +382,23 @@ async def gozao_command(ctx, *, prompt: str = None):
                 top_p=1,
                 stream=False
             )
-            
+
             response_text = completion.choices[0].message.content
             history.append({"role": "assistant", "content": response_text})
 
-            if len(response_text) > 2000:
-                await ctx.send(response_text[:1900] + "\n\n**(Cortei pq escrevi demais, aff)**")
-            else:
-                await ctx.send(response_text)
+            await ctx.send(response_text[:2000])
 
         except Exception as e:
-            await ctx.send(f"Deu ruim no Groq, até a IA me odeia: {e}")
+            await ctx.send(f"Deu ruim no Groq: {e}")
 
 @bot.command(name="reset")
 async def reset_memory(ctx):
     key = (ctx.channel.id, ctx.author.id)
     if key in chat_sessions:
         del chat_sessions[key]
-        await ctx.send("Esqueci de tudo. Culpa da cerveja.")
+        await ctx.send("Esqueci tudo, paizão.")
     else:
-        await ctx.send("Nem lembro de ter falado contigo.")
+        await ctx.send("Nem lembro de tu.")
 
 keep_alive()
 bot.run(DISCORD_TOKEN)
