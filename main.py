@@ -408,7 +408,6 @@ async def gozao_command(ctx, *, prompt: str = None):
             history = get_chat_history(ctx.channel.id, ctx.author.id)
             history.append({"role": "user", "content": prompt})
 
-            # USANDO A NOVA FUNÇÃO COM FALLBACK
             loop = asyncio.get_event_loop()
             response_text = await loop.run_in_executor(
                 None, 
