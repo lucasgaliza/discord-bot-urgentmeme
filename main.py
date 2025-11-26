@@ -135,7 +135,7 @@ async def generate_urgent_report_content(item_count=5):
         {news_data}
 
         TAREFA:
-        Relatório "URGENTE" (que canseira fazer isso...):
+        Relatório "URGENTE":
         
         SEÇÃO 1: ⚽ ESPORTES
         - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE).
@@ -149,8 +149,8 @@ async def generate_urgent_report_content(item_count=5):
         - Reclame um pouco no começo ou final.
         - MAX 1900 CARACTERES.
         
-        FORMATO:
-        [Sua reclamação inicial estilo vítima/cervejeiro]
+        FORMATO FINAL:
+        **URGENTE**
 
         ⚽ **ESPORTES**
         1. [Título] 
