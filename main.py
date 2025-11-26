@@ -76,7 +76,6 @@ async def shorten_candidates(candidates, loop):
     return final_list
 
 async def fetch_urgent_news_data():
-    """Fetches all feeds and prepares the raw data string."""
     try:
         loop = asyncio.get_event_loop()
         
@@ -132,7 +131,6 @@ async def fetch_urgent_news_data():
         return None
 
 async def generate_report_from_data(news_data, focus, item_count):
-    """Generates the report using Groq based on the focus (mixed, sports, general)."""
     
     task_description = ""
     format_instruction = ""
@@ -144,7 +142,7 @@ async def generate_report_from_data(news_data, focus, item_count):
         - Ignore notícias que não sejam de esporte.
         """
         format_instruction = """
-        ⚽ **PLANTÃO ESPORTIVO DO GOZÃO**
+        ⚽ **MUNDO DAS BOLAS DO GULINHO**
         1. [Título] 
         🔗 [Link]
         ...
@@ -152,11 +150,11 @@ async def generate_report_from_data(news_data, focus, item_count):
     elif focus == 'general':
         task_description = f"""
         - O Foco é 100% GERAL e TRENDING TOPICS.
-        - Selecione as {item_count} notícias mais importantes de GERAL (G1) ou TRENDING.
+        - Selecione as {item_count} notícias mais importantes de GERAL (G1) e TRENDING.
         - Ignore notícias de esporte.
         """
         format_instruction = """
-        🌍 **MUNDO CAÓTICO (GERAL)**
+        🌍 **MUNDO**
         1. [Título]
         🔗 [Link]
         ...
@@ -191,7 +189,7 @@ async def generate_report_from_data(news_data, focus, item_count):
 
     REGRAS:
     - Títulos curtos.
-    - APENAS Título e Link. Sem resumo (tô com preguiça).
+    - APENAS Título e Link.
     - MAX 1900 CARACTERES.
     
     FORMATO FINAL:
@@ -255,8 +253,6 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
         if channel_target is None:
             await ctx.send("Mano, tu quer que eu adivinhe o canal? Não achei o #digo-menos e tu não marcou nada.")
             return
-
-    await ctx.send(f"Tô indo lá no {channel_target.mention} ver se acho alguma coisa que preste...")
 
     async with ctx.typing():
         try:
@@ -365,7 +361,6 @@ async def get_news(ctx, *, topic="tecnologia"):
             1. Selecione 3 a 5 notícias.
             2. Priorize G1/GE.
             3. SEM RESUMO. Só Título e Link.
-            4. Reclame da vida ou peça cerveja.
             5. MAX 1800 CHARS.
             """
 
