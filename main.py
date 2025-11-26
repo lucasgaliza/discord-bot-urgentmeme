@@ -8,6 +8,7 @@ import feedparser
 import random
 from datetime import datetime, timedelta
 from time import mktime
+from urllib.parse import quote
 from keep_alive import keep_alive
 
 # --- CONFIGURATION ---
@@ -73,10 +74,13 @@ def is_recent(entry):
     if not hasattr(entry, 'published_parsed'):
         return True # If no date, assume valid to be safe, or False to be strict
     
-    published_time = datetime.fromtimestamp(mktime(entry.published_parsed))
-    now = datetime.now()
-    # 24 hours tolerance
-    return (now - published_time) < timedelta(hours=24)
+    try:
+        published_time = datetime.fromtimestamp(mktime(entry.published_parsed))
+        now = datetime.now()
+        # 24 hours tolerance
+        return (now - published_time) < timedelta(hours=24)
+    except:
+        return True # Fallback if date parsing fails
 
 # --- COMMAND: RESET ---
 @bot.command(name="reset")
@@ -121,7 +125,7 @@ async def gozao_command(ctx, *, prompt: str = None):
             await ctx.send(f"Deu ruim no Groq: {e}")
 
 # --- COMMAND: NEWS (Enhanced) ---
-@bot.command(name="news")
+@bot.command(name="news") # Mantendo nome 'news' mas com lógica nova
 async def get_news(ctx, *, topic="tecnologia"):
     """
     Fetches news from Google and G1, filters duplicates via Groq, and ensures freshness.
@@ -129,11 +133,15 @@ async def get_news(ctx, *, topic="tecnologia"):
     async with ctx.typing():
         try:
             # 1. Define Feed URLs
-            # Google News (Aggregator)
-            google_url = f"https://news.google.com/rss/search?q={topic}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
-            # G1 (Main Feed - we will filter manually since they don't have a search RSS)
+            # Encode topic to handle spaces (e.g. "santos e flamengo" -> "santos%20e%20flamengo")
+            encoded_topic = quote(topic)
+            
+            # Google News (Search)
+            google_url = f"https://news.google.com/rss/search?q={encoded_topic}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
+            
+            # G1 (Main Feed & GE - trying to cover more ground)
             g1_url = "https://g1.globo.com/rss/g1/"
-
+            
             # 2. Run fetching in a separate thread to prevent bot timeout
             loop = asyncio.get_event_loop()
             feed_google_future = loop.run_in_executor(None, fetch_feed, google_url)
@@ -144,52 +152,51 @@ async def get_news(ctx, *, topic="tecnologia"):
 
             # 3. Collect and Pre-filter Candidates
             candidates = []
+            
+            # Prepare keywords for G1 filtering (split topic into words, ignore small words like 'e', 'do')
+            topic_keywords = [w.lower() for w in topic.split() if len(w) > 2]
+
+            # Process G1 Entries (PRIORITY)
+            if feed_g1.entries:
+                for entry in feed_g1.entries:
+                    if is_recent(entry):
+                        # Check if any keyword matches the title
+                        if any(k in entry.title.lower() for k in topic_keywords) or topic.lower() in entry.title.lower():
+                            candidates.append(f"FONTE: G1 | TÍTULO: {entry.title} | LINK: {entry.link}")
 
             # Process Google Entries
             if feed_google.entries:
-                for entry in feed_google.entries[:8]: # Limit to top 8 to save tokens
+                for entry in feed_google.entries[:10]: # Get top 10 to ensure variety
                     if is_recent(entry):
                         candidates.append(f"FONTE: GoogleNews | TÍTULO: {entry.title} | LINK: {entry.link}")
-
-            # Process G1 Entries (Filter by topic similarity roughly or just add top ones)
-            if feed_g1.entries:
-                count = 0
-                for entry in feed_g1.entries:
-                    if count >= 5: break # Max 5 from G1
-                    # Simple keyword check for relevance or just include headlines
-                    if is_recent(entry):
-                        # If topic is general, just add. If specific, check title.
-                        if topic.lower() in entry.title.lower() or len(candidates) < 5:
-                            candidates.append(f"FONTE: G1 | TÍTULO: {entry.title} | LINK: {entry.link}")
-                            count += 1
 
             if not candidates:
                 await ctx.send(f"Paizão, procurei no Google e no G1 mas não achei nada recente (últimas 24h) sobre '{topic}'.")
                 return
 
             # 4. Send to Groq for Curation and Formatting
-            # We give the raw list to the LLM and ask it to pick the best unique ones.
             news_data = "\n".join(candidates)
             
             curation_prompt = f"""
-            Aja como o "Gozão" (seu sistema).
-            Eu tenho uma lista de notícias brutas sobre o tema: "{topic}".
+            Aja como o "Gozão".
+            Tópico pesquisado: "{topic}".
             
-            LISTA DE NOTÍCIAS:
+            LISTA DE NOTÍCIAS BRUTAS:
             {news_data}
 
             TAREFA:
-            1. Selecione exatamente 3 notícias mais relevantes e DISTINTAS (não repita o mesmo assunto se tiver fontes diferentes).
-            2. Se tiver menos de 3 notícias boas, mande as que tiver.
-            3. Para cada notícia, escreva um resumo de uma linha no seu estilo "Paizão".
-            4. Mantenha o LINK original de cada uma.
+            1. Selecione entre 3 a 5 notícias mais relevantes e RECENTES.
+            2. **PRIORIZE notícias do G1**. Se houver notícias do G1 na lista, elas devem aparecer primeiro.
+            3. Tente diversificar: Se possível, pegue pelo menos uma do G1 e uma do GoogleNews (se forem relevantes).
+            4. Ignore notícias repetidas (mesmo assunto com títulos parecidos).
+            5. Para cada notícia, escreva um resumo curto no seu estilo "Paizão".
             
             FORMATO DA RESPOSTA:
             **📰 Notícias brabas sobre {topic}:**
 
             1. [Emoji] **[Título Resumido]**
             [Resumo estilo Gozão]
-            🔗 [Link]
+            🔗 [Link Original]
 
             2. ...
             """
@@ -197,8 +204,8 @@ async def get_news(ctx, *, topic="tecnologia"):
             completion = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": curation_prompt}],
-                temperature=0.5, # Lower temperature for factual news
-                max_tokens=800,
+                temperature=0.4, # Lower temperature for better fact selection
+                max_tokens=1000,
                 stream=False
             )
 
@@ -206,7 +213,7 @@ async def get_news(ctx, *, topic="tecnologia"):
             await ctx.send(final_response)
 
         except Exception as e:
-            print(f"News Error: {e}") # Print to console for debug
+            print(f"News Error: {e}")
             await ctx.send("Paizão, deu um erro na hora de buscar as notícias. Tenta de novo daqui a pouco.")
 
 # --- COMMAND: MEME ---
