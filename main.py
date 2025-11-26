@@ -190,7 +190,7 @@ async def urgent_command(ctx):
     global target_news_channel_id
     target_news_channel_id = ctx.channel.id
     
-    await ctx.send("🚨 **Segura que o pai tá compilando o que tá bombando!** (Configurado para mandar aqui a cada 2h)")
+    await ctx.send("🚨 **URGENTE")
     
     async with ctx.typing():
         report = await generate_urgent_report_content()
