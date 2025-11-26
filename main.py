@@ -208,9 +208,9 @@ async def help_command(ctx):
 @bot.command(name="meme")
 async def meme_command(ctx, channel_target: discord.TextChannel = None):
     if channel_target is None:
-        channel_target = discord.utils.get(ctx.guild.text_channels, name="ahh-mano")
+        channel_target = discord.utils.get(ctx.guild.text_channels, name="digo-menos")
         if channel_target is None:
-            await ctx.send("Mano, tu quer que eu adivinhe o canal? Não achei o #ahh-mano e tu não marcou nada.")
+            await ctx.send("Mano, tu quer que eu adivinhe o canal? Não achei o #digo-menos e tu não marcou nada.")
             return
 
     await ctx.send(f"Tô indo lá no {channel_target.mention} ver se acho alguma coisa que preste...")
