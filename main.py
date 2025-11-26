@@ -15,7 +15,14 @@ DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 client = Groq(api_key=GROQ_API_KEY)
-GROQ_MODEL = "llama-3.3-70b-versatile"
+
+GROQ_MODELS = [
+    "llama-3.3-70b-versatile",
+    "openai/gpt-oss-120b",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3-32b"
+]
 
 SYSTEM_PROMPT = """
 Você é o Gozão. Sua personalidade é de alguém que vive se vitimizando ("ai minha vida", "ninguém me respeita"), reclama bastante, mas é viciado em cerveja.
@@ -40,6 +47,27 @@ async def on_ready():
     print(f'We have logged in as {bot.user}')
     if not auto_news_loop.is_running():
         auto_news_loop.start()
+
+def try_groq_generation(messages, temperature=0.6, max_tokens=800):
+    last_error = None
+    
+    for model in GROQ_MODELS:
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=False
+            )
+            return completion.choices[0].message.content
+            
+        except Exception as e:
+            print(f"⚠️ Erro no modelo {model}: {e}. Tentando o próximo...")
+            last_error = e
+            continue
+            
+    return f"Deu ruim em todos os modelos, paizão. O erro final foi: {last_error}"
 
 def get_chat_history(channel_id, user_id):
     key = (channel_id, user_id)
@@ -196,17 +224,12 @@ async def generate_report_from_data(news_data, focus, item_count):
     {format_instruction}
     """
 
-    try:
-        completion = client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[{"role": "user", "content": curation_prompt}],
-            temperature=0.6,
-            max_tokens=800,
-            stream=False
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        return f"Deu ruim no Groq: {e}"
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None, 
+        lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.6, max_tokens=800)
+    )
+    return response
 
 @tasks.loop(hours=1)
 async def auto_news_loop():
@@ -364,14 +387,12 @@ async def get_news(ctx, *, topic="tecnologia"):
             5. MAX 1800 CHARS.
             """
 
-            completion = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "user", "content": curation_prompt}],
-                temperature=0.5,
-                max_tokens=500,
-                stream=False
+            # USANDO A NOVA FUNÇÃO COM FALLBACK
+            response_text = await loop.run_in_executor(
+                None, 
+                lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.5, max_tokens=500)
             )
-            await ctx.send(completion.choices[0].message.content)
+            await ctx.send(response_text)
 
         except Exception as e:
             print(f"News Error: {e}")
@@ -388,16 +409,13 @@ async def gozao_command(ctx, *, prompt: str = None):
             history = get_chat_history(ctx.channel.id, ctx.author.id)
             history.append({"role": "user", "content": prompt})
 
-            completion = client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=history,
-                temperature=1.0,
-                max_tokens=250,
-                top_p=1,
-                stream=False
+            # USANDO A NOVA FUNÇÃO COM FALLBACK
+            loop = asyncio.get_event_loop()
+            response_text = await loop.run_in_executor(
+                None, 
+                lambda: try_groq_generation(history, temperature=1.0, max_tokens=250)
             )
             
-            response_text = completion.choices[0].message.content
             history.append({"role": "assistant", "content": response_text})
 
             if len(response_text) > 2000:
