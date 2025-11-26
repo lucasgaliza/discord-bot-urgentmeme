@@ -69,19 +69,6 @@ def get_chat_history(channel_id, user_id):
 def fetch_feed(url):
     return feedparser.parse(url)
 
-def is_recent(entry):
-    """Checks if the news is from the last 24 hours."""
-    if not hasattr(entry, 'published_parsed'):
-        return True # If no date, assume valid to be safe, or False to be strict
-    
-    try:
-        published_time = datetime.fromtimestamp(mktime(entry.published_parsed))
-        now = datetime.now()
-        # 24 hours tolerance
-        return (now - published_time) < timedelta(hours=24)
-    except:
-        return True # Fallback if date parsing fails
-
 # --- COMMAND: RESET ---
 @bot.command(name="reset")
 async def reset_memory(ctx):
@@ -125,56 +112,71 @@ async def gozao_command(ctx, *, prompt: str = None):
             await ctx.send(f"Deu ruim no Groq: {e}")
 
 # --- COMMAND: NEWS (Enhanced) ---
-@bot.command(name="news") # Mantendo nome 'news' mas com lógica nova
+@bot.command(name="news")
 async def get_news(ctx, *, topic="tecnologia"):
     """
-    Fetches news from Google and G1, filters duplicates via Groq, and ensures freshness.
+    Fetches news from Google, G1 and GE (Sports), filters via Groq.
     """
     async with ctx.typing():
         try:
             # 1. Define Feed URLs
-            # Encode topic to handle spaces (e.g. "santos e flamengo" -> "santos%20e%20flamengo")
             encoded_topic = quote(topic)
             
             # Google News (Search)
             google_url = f"https://news.google.com/rss/search?q={encoded_topic}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
             
-            # G1 (Main Feed & GE - trying to cover more ground)
+            # G1 (Main Feed)
             g1_url = "https://g1.globo.com/rss/g1/"
+
+            # GE (Globo Esporte) - Added for sports priority
+            ge_url = "https://ge.globo.com/rss/ge/"
             
-            # 2. Run fetching in a separate thread to prevent bot timeout
+            # 2. Run fetching in separate threads with TIMEOUT
             loop = asyncio.get_event_loop()
             feed_google_future = loop.run_in_executor(None, fetch_feed, google_url)
             feed_g1_future = loop.run_in_executor(None, fetch_feed, g1_url)
+            feed_ge_future = loop.run_in_executor(None, fetch_feed, ge_url)
 
-            # Wait for both
-            feed_google, feed_g1 = await asyncio.gather(feed_google_future, feed_g1_future)
+            try:
+                # Wait for all feeds with a 15 second timeout
+                feed_google, feed_g1, feed_ge = await asyncio.wait_for(
+                    asyncio.gather(feed_google_future, feed_g1_future, feed_ge_future),
+                    timeout=15.0 
+                )
+            except asyncio.TimeoutError:
+                await ctx.send("Paizão, a internet tá de rosca. Demorou demais pra buscar as notícias e deu timeout.")
+                return
 
-            # 3. Collect and Pre-filter Candidates
+            # 3. Collect Candidates (No date filter anymore)
             candidates = []
             
-            # Prepare keywords for G1 filtering (split topic into words, ignore small words like 'e', 'do')
+            # Prepare keywords for filtering G1/GE
             topic_keywords = [w.lower() for w in topic.split() if len(w) > 2]
 
-            # Process G1 Entries (PRIORITY)
-            if feed_g1.entries:
-                for entry in feed_g1.entries:
-                    if is_recent(entry):
-                        # Check if any keyword matches the title
+            # Helper to process Globo/GE feeds
+            def process_globo_feed(feed, source_label):
+                if feed.entries:
+                    for entry in feed.entries:
+                        # Check if title matches topic keywords
                         if any(k in entry.title.lower() for k in topic_keywords) or topic.lower() in entry.title.lower():
-                            candidates.append(f"FONTE: G1 | TÍTULO: {entry.title} | LINK: {entry.link}")
+                            candidates.append(f"FONTE: {source_label} | TÍTULO: {entry.title} | LINK: {entry.link}")
+
+            # Process GE (Sports Priority)
+            process_globo_feed(feed_ge, "GloboEsporte")
+
+            # Process G1
+            process_globo_feed(feed_g1, "G1")
 
             # Process Google Entries
             if feed_google.entries:
-                for entry in feed_google.entries[:10]: # Get top 10 to ensure variety
-                    if is_recent(entry):
-                        candidates.append(f"FONTE: GoogleNews | TÍTULO: {entry.title} | LINK: {entry.link}")
+                for entry in feed_google.entries[:10]: # Get top 10 from Google
+                    candidates.append(f"FONTE: GoogleNews | TÍTULO: {entry.title} | LINK: {entry.link}")
 
             if not candidates:
-                await ctx.send(f"Paizão, procurei no Google e no G1 mas não achei nada recente (últimas 24h) sobre '{topic}'.")
+                await ctx.send(f"Paizão, procurei no Google, G1 e GE mas não achei nada sobre '{topic}'.")
                 return
 
-            # 4. Send to Groq for Curation and Formatting
+            # 4. Send to Groq for Curation
             news_data = "\n".join(candidates)
             
             curation_prompt = f"""
@@ -185,17 +187,16 @@ async def get_news(ctx, *, topic="tecnologia"):
             {news_data}
 
             TAREFA:
-            1. Selecione entre 3 a 5 notícias mais relevantes e RECENTES.
-            2. **PRIORIZE notícias do G1**. Se houver notícias do G1 na lista, elas devem aparecer primeiro.
-            3. Tente diversificar: Se possível, pegue pelo menos uma do G1 e uma do GoogleNews (se forem relevantes).
-            4. Ignore notícias repetidas (mesmo assunto com títulos parecidos).
-            5. Para cada notícia, escreva um resumo curto no seu estilo "Paizão".
+            1. Selecione entre 3 a 5 notícias mais relevantes.
+            2. **PRIORIZE notícias do G1 e GloboEsporte**.
+            3. Tente diversificar as fontes se possível.
+            4. Ignore notícias repetidas.
+            5. **NÃO ESCREVA RESUMO**. Apenas o Título e o Link.
             
             FORMATO DA RESPOSTA:
             **📰 Notícias brabas sobre {topic}:**
 
-            1. [Emoji] **[Título Resumido]**
-            [Resumo estilo Gozão]
+            1. [Emoji] **[Título]**
             🔗 [Link Original]
 
             2. ...
@@ -204,8 +205,8 @@ async def get_news(ctx, *, topic="tecnologia"):
             completion = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": curation_prompt}],
-                temperature=0.4, # Lower temperature for better fact selection
-                max_tokens=1000,
+                temperature=0.3, # Low temp for precision
+                max_tokens=800,
                 stream=False
             )
 
