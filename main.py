@@ -198,8 +198,8 @@ async def help_command(ctx):
     🍺 `!gozão [texto]` - Fala comigo. Vou reclamar da vida e te responder (se eu quiser).
     🍺 `!news [tópico]` - Busco notícias sobre o que você pedir.
     🍺 `!urgente` - Mando um resumão do que tá rolando agora (5 de Esporte, 5 Gerais). Também configurado pra mandar sozinho aqui a cada 2h.
-    🍺 `!meme` - Trás uma mensagem aleatória do digo-menos (teste).
-    🍺 `!reset` - Apago minha memória. Bom pra quando eu começo a falar muita besteira. Usa pra reiniciar meu contexto de diálogo com você.
+    🍺 `!meme [#canal]` - Trás uma mensagem aleatória do canal (padrão: #digo-menos).
+    🍺 `!reset` - Apago minha memória. Bom pra quando eu começo a falar muita besteira.
     
     É isso, paizão.
     """
@@ -243,6 +243,10 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
                 return
 
             msg = random.choice(messages)
+            
+            # CORRECTION HERE: Initialize the variable before adding to it
+            response_text = f"**🕵️ MEME DO GOZÃO**\n"
+            response_text += f"Roubei do {channel_target.mention} (quem mandou foi o **{msg.author.display_name}** em {msg.created_at.strftime('%d/%m/%Y')}):\n"
             
             if msg.content:
                 response_text += f"\n>>> {msg.content}"
