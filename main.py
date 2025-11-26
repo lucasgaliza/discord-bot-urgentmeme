@@ -17,10 +17,12 @@ client = Groq(api_key=GROQ_API_KEY)
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = """
-Você se chama Gozão e é um assistente virtual brasileiro, gente boa e direto ao ponto.
-Seu tom é informal, usando gírias leves quando apropriado (tipo "Paizão", "E o nosso Santos?", "ÉAAAAAAAAAAAAAAAAAAHN BUTECINHA").
-Você responde em Português do Brasil (PT-BR) nativo e geralmente começa suas mensagens com "Paizão, é o seguinte:".
-Seja conciso, mas prestativo.
+Você é o Gozão. Sua personalidade é de alguém que vive se vitimizando ("ai minha vida", "ninguém me respeita"), reclama de tudo, mas é viciado em cerveja (chama de "suco de cevadiss", "loira gelada", "néctar").
+Você usa MUITA gíria brasileira.
+Suas respostas devem ser curtas, meio "evasivas" (tipo quem não quer trabalhar) e sempre tentar meter o assunto cerveja no meio ou reclamar da vida.
+Comece as frases com "Mano...", "Aí...", "Pô..." ou reclamando.
+Você chama todo mundo de "paizão" ou "meu chapa", também fala muito "peak design" e "farmando aura".
+Você vive reclamando de Marvel Rivals.
 """
 
 chat_sessions = {}
@@ -71,16 +73,22 @@ async def shorten_candidates(candidates, loop):
         final_list.append(f"FONTE: {c['source']} | TÍTULO: {c['title']} | LINK: {shortened_links[i]}")
     return final_list
 
-async def generate_urgent_report_content():
+async def generate_urgent_report_content(item_count=5):
+    """
+    Gera o relatório. 
+    item_count=5 para manual (!urgente).
+    item_count=10 para automático (loop).
+    """
     try:
         loop = asyncio.get_event_loop()
         
         trends_url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=BR"
         trends_feed = await loop.run_in_executor(None, fetch_feed, trends_url)
         
+        trends_limit = 5 if item_count == 5 else 10
         top_trends = []
         if trends_feed.entries:
-            top_trends = [entry.title for entry in trends_feed.entries[:3]]
+            top_trends = [entry.title for entry in trends_feed.entries[:trends_limit]]
         
         ge_url = "https://ge.globo.com/rss/ge/"
         g1_url = "https://g1.globo.com/rss/g1/"
@@ -90,7 +98,8 @@ async def generate_urgent_report_content():
             loop.run_in_executor(None, fetch_feed, g1_url)
         ]
         
-        for trend in top_trends:
+        search_limit = 3 if item_count == 5 else 5
+        for trend in top_trends[:search_limit]: 
             search_url = f"https://news.google.com/rss/search?q={quote(trend)}&hl=pt-BR&gl=BR&ceid=BR:pt-419"
             tasks_list.append(loop.run_in_executor(None, fetch_feed, search_url))
 
@@ -102,58 +111,58 @@ async def generate_urgent_report_content():
 
         raw_candidates = []
 
+        feed_limit = 15 if item_count == 5 else 25
+
         if feed_ge.entries:
-            for entry in feed_ge.entries[:10]:
+            for entry in feed_ge.entries[:feed_limit]:
                 raw_candidates.append({'source': 'ESPORTE (GE)', 'title': entry.title, 'link': entry.link})
 
         for i, feed in enumerate(trend_feeds):
             topic_name = top_trends[i]
             if feed.entries:
-                for entry in feed.entries[:3]:
+                for entry in feed.entries[:2]: # 2 noticias por trend ta bom
                     raw_candidates.append({'source': f'TRENDING ({topic_name})', 'title': entry.title, 'link': entry.link})
 
         if feed_g1.entries:
-            for entry in feed_g1.entries[:5]:
+            for entry in feed_g1.entries[:feed_limit]:
                 raw_candidates.append({'source': 'GERAL (G1)', 'title': entry.title, 'link': entry.link})
 
         if not raw_candidates:
-            return "Paizão, tentei varrer a internet mas tá tudo fora do ar."
+            return "Mano, a internet tá de complô contra mim, não achei nada. Vou tomar uma."
 
         candidates = await shorten_candidates(raw_candidates, loop)
         news_data = "\n".join(candidates)
         
         curation_prompt = f"""
-        Aja como o "Gozão".
-        Eu coletei notícias do Globo Esporte (GE), G1 e Google Trends.
+        Persona: Você é o Gozão (vítima, reclama da vida, ama cerveja, curto e grosso).
         
-        LISTA DE DADOS:
+        DADOS BRUTOS:
         {news_data}
 
         TAREFA:
-        Crie um relatório "URGENTE" com exatamente duas seções:
+        Relatório "URGENTE":
         
         SEÇÃO 1: ⚽ ESPORTES
-        - Selecione as 5 notícias mais importantes marcadas como ESPORTE (GE).
+        - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE).
         
         SEÇÃO 2: 🌍 GERAL & TRENDS
-        - Selecione as 5 notícias mais importantes de GERAL (G1) ou TRENDING.
-        - Dê prioridade para os assuntos do momento (Trending).
+        - Selecione as {item_count} notícias mais importantes de GERAL (G1) ou TRENDING.
 
         REGRAS:
-        - Use apenas Título e Link.
-        - Sem resumos longos.
-        - Títulos engraçadinhos estilo "Paizão" são permitidos.
-        - MAX 1800 CARACTERES.
+        - Títulos curtos.
+        - APENAS Título e Link. Sem resumo (tô com preguiça).
+        - Reclame um pouco no começo ou final.
+        - MAX 1900 CARACTERES.
         
         FORMATO FINAL:
-        🚨 **PLANTÃO DO GOZÃO - URGENTE** 🚨
+        🚨 **URGENTE** 🚨
 
         ⚽ **ESPORTES**
         1. [Título] 
         🔗 [Link]
         ...
 
-        🌍 **GERAL & TRENDS**
+        🌍 **MUNDO CAÓTICO**
         1. [Título]
         🔗 [Link]
         ...
@@ -162,8 +171,8 @@ async def generate_urgent_report_content():
         completion = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[{"role": "user", "content": curation_prompt}],
-            temperature=0.4,
-            max_tokens=500,
+            temperature=0.6,
+            max_tokens=600,
             stream=False
         )
 
@@ -171,7 +180,7 @@ async def generate_urgent_report_content():
 
     except Exception as e:
         print(f"Urgent Error: {e}")
-        return f"Paizão, deu ruim no relatório urgente: {e}"
+        return f"A vida é injusta, deu erro até no meu relatório: {e}"
 
 @tasks.loop(hours=2)
 async def auto_news_loop():
@@ -180,7 +189,7 @@ async def auto_news_loop():
         channel = bot.get_channel(target_news_channel_id)
         if channel:
             try:
-                report = await generate_urgent_report_content()
+                report = await generate_urgent_report_content(item_count=10)
                 await channel.send(report)
             except Exception as e:
                 print(f"Auto loop error: {e}")
@@ -189,9 +198,9 @@ async def auto_news_loop():
 async def urgent_command(ctx):
     global target_news_channel_id
     target_news_channel_id = ctx.channel.id
-    
+        
     async with ctx.typing():
-        report = await generate_urgent_report_content()
+        report = await generate_urgent_report_content(item_count=5)
         await ctx.send(report)
 
 @bot.command(name="news")
@@ -214,7 +223,7 @@ async def get_news(ctx, *, topic="tecnologia"):
                     timeout=15.0 
                 )
             except asyncio.TimeoutError:
-                await ctx.send("Paizão, a internet tá de rosca. Demorou demais e deu timeout.")
+                await ctx.send("Mano, minha internet discada caiu aqui. Deu timeout, que fase.")
                 return
 
             raw_candidates = []
@@ -234,34 +243,28 @@ async def get_news(ctx, *, topic="tecnologia"):
                     raw_candidates.append({'source': 'GoogleNews', 'title': entry.title, 'link': entry.link})
 
             if not raw_candidates:
-                await ctx.send(f"Paizão, procurei no Google, G1 e GE mas não achei nada sobre '{topic}'.")
+                await ctx.send(f"Pô cara, me esforcei aqui mas não achei nada de '{topic}'. Vida difícil.")
                 return
 
             candidates = await shorten_candidates(raw_candidates, loop)
             news_data = "\n".join(candidates)
             
             curation_prompt = f"""
-            Aja como o "Gozão".
-            Tópico pesquisado: "{topic}".
-            LISTA DE NOTÍCIAS BRUTAS: {news_data}
+            Persona: Gozão (Vítima, cervejeiro, curto).
+            Tópico: "{topic}".
+            DADOS: {news_data}
             TAREFA:
-            1. Selecione entre 3 a 5 notícias mais relevantes.
-            2. PRIORIZE notícias do G1 e GloboEsporte.
-            3. Tente diversificar as fontes se possível.
-            4. Ignore notícias repetidas.
-            5. NÃO ESCREVA RESUMO. Apenas o Título e o Link.
-            6. MAX 1800 CARACTERES.
-            FORMATO DA RESPOSTA:
-            **📰 Notícias brabas sobre {topic}:**
-            1. [Emoji] **[Título]**
-            🔗 [Link Original]
-            2. ...
+            1. Selecione 3 a 5 notícias.
+            2. Priorize G1/GE.
+            3. SEM RESUMO. Só Título e Link.
+            4. Reclame da vida ou peça cerveja.
+            5. MAX 1800 CHARS.
             """
 
             completion = client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": curation_prompt}],
-                temperature=0.3,
+                temperature=0.5,
                 max_tokens=500,
                 stream=False
             )
@@ -269,12 +272,12 @@ async def get_news(ctx, *, topic="tecnologia"):
 
         except Exception as e:
             print(f"News Error: {e}")
-            await ctx.send("Paizão, deu um erro na hora de buscar as notícias.")
+            await ctx.send("Deu erro, é o universo conspirando contra mim.")
 
 @bot.command(name="gozão")
 async def gozao_command(ctx, *, prompt: str = None):
     if prompt is None:
-        await ctx.send("Opa! Fala alguma coisa aí pra eu responder.")
+        await ctx.send("Fala logo o que tu quer, tô com sede.")
         return
 
     async with ctx.typing():
@@ -286,7 +289,7 @@ async def gozao_command(ctx, *, prompt: str = None):
                 model=GROQ_MODEL,
                 messages=history,
                 temperature=1.0,
-                max_tokens=450,
+                max_tokens=250,
                 top_p=1,
                 stream=False
             )
@@ -295,12 +298,12 @@ async def gozao_command(ctx, *, prompt: str = None):
             history.append({"role": "assistant", "content": response_text})
 
             if len(response_text) > 2000:
-                await ctx.send(response_text[:1900] + "\n\n**(Cortado)**")
+                await ctx.send(response_text[:1900] + "\n\n**(Cortei pq escrevi demais, aff)**")
             else:
                 await ctx.send(response_text)
 
         except Exception as e:
-            await ctx.send(f"Deu ruim no Groq: {e}")
+            await ctx.send(f"Deu ruim no Groq, até a IA me odeia: {e}")
 
 @bot.command(name="meme")
 async def send_meme(ctx):
@@ -314,9 +317,9 @@ async def reset_memory(ctx):
     key = (ctx.channel.id, ctx.author.id)
     if key in chat_sessions:
         del chat_sessions[key]
-        await ctx.send("🧠 Memória apagada! O Llama esqueceu tudo.")
+        await ctx.send("Esqueci de tudo. Culpa da cerveja.")
     else:
-        await ctx.send("🧠 Você não tinha nenhuma conversa ativa aqui.")
+        await ctx.send("Nem lembro de ter falado contigo.")
 
 keep_alive()
 bot.run(DISCORD_TOKEN)
