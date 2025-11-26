@@ -48,7 +48,7 @@ async def on_ready():
     if not auto_news_loop.is_running():
         auto_news_loop.start()
 
-def try_groq_generation(messages, temperature=0.6, max_tokens=800):
+def try_groq_generation(messages, temperature=0.6, max_tokens=900):
     last_error = None
     
     for model in GROQ_MODELS:
@@ -207,7 +207,6 @@ async def generate_report_from_data(news_data, focus, item_count):
         """
 
     curation_prompt = f"""
-    Persona: Você é o Gozão (vítima, reclama da vida, ama cerveja, curto e grosso).
     
     DADOS BRUTOS:
     {news_data}
@@ -227,7 +226,7 @@ async def generate_report_from_data(news_data, focus, item_count):
     loop = asyncio.get_event_loop()
     response = await loop.run_in_executor(
         None, 
-        lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.6, max_tokens=800)
+        lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.6, max_tokens=900)
     )
     return response
 
@@ -377,7 +376,6 @@ async def get_news(ctx, *, topic="tecnologia"):
             news_data = "\n".join(candidates)
             
             curation_prompt = f"""
-            Persona: Gozão (Vítima, cervejeiro, curto).
             Tópico: "{topic}".
             DADOS: {news_data}
             TAREFA:
@@ -389,7 +387,7 @@ async def get_news(ctx, *, topic="tecnologia"):
 
             response_text = await loop.run_in_executor(
                 None, 
-                lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.5, max_tokens=500)
+                lambda: try_groq_generation([{"role": "user", "content": curation_prompt}], temperature=0.5, max_tokens=900)
             )
             await ctx.send(response_text)
 
@@ -411,7 +409,7 @@ async def gozao_command(ctx, *, prompt: str = None):
             loop = asyncio.get_event_loop()
             response_text = await loop.run_in_executor(
                 None, 
-                lambda: try_groq_generation(history, temperature=1.0, max_tokens=250)
+                lambda: try_groq_generation(history, temperature=1.0, max_tokens=900)
             )
             
             history.append({"role": "assistant", "content": response_text})
