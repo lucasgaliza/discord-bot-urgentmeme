@@ -213,8 +213,6 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
             await ctx.send("Mano, tu quer que eu adivinhe o canal? Não achei o #digo-menos e tu não marcou nada.")
             return
 
-    await ctx.send(f"Tô indo lá no {channel_target.mention} ver se acho alguma coisa que preste...")
-
     async with ctx.typing():
         try:
             start_date = channel_target.created_at
