@@ -257,9 +257,7 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
 async def urgent_command(ctx):
     global target_news_channel_id
     target_news_channel_id = ctx.channel.id
-    
-    await ctx.send("Aff, lá vem você pedir coisa... tá bom, vou ver o que tá rolando (só pra garantir minha cerveja).")
-    
+        
     async with ctx.typing():
         report = await generate_urgent_report_content(item_count=5)
         await ctx.send(report)
