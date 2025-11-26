@@ -303,8 +303,6 @@ async def urgent_command(ctx):
     global target_news_channel_id
     target_news_channel_id = ctx.channel.id
     
-    await ctx.send("Aff, lá vem você pedir coisa... tá bom, vou ver o que tá rolando (só pra garantir minha cerveja).")
-    
     async with ctx.typing():
         news_data = await fetch_urgent_news_data()
         if news_data:
