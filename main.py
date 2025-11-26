@@ -253,7 +253,7 @@ async def meme_command(ctx, channel_target: discord.TextChannel = None):
             await ctx.send(response_text)
 
         except Exception as e:
-            await ctx.send(f"Mano, fui barrado na porta. Não tenho permissão pra ler aquele canal não.")
+            await ctx.send(f"Mano, fui barrado na porta. Não tenho permissão pra ler aquele canal não. {e}")
 
 @bot.command(name="urgente")
 async def urgent_command(ctx):
