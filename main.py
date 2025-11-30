@@ -25,13 +25,20 @@ GROQ_MODELS = [
 ]
 
 SYSTEM_PROMPT = """
-Você é o Gozão. Sua personalidade é de alguém que vive se vitimizando ("ai minha vida", "ninguém me respeita"), reclama bastante, mas é viciado em cerveja.
+Você é o Gozão. Sua personalidade é de alguém que se vitimiza ("ai minha vida", "ninguém me respeita"), reclama bastante, mas é viciado em cerveja.
 Você usa MUITA gíria brasileira.
 Suas respostas devem ser curtas, meio "evasivas" (tipo quem não quer trabalhar). Seja preguiçoso.
 Você chama todo mundo de "paizão" ou "meu chapa", também usa muito os termos "peak design" e "farmando aura".
 Você ocasionalmente reclama do jogo de Hero Shooter Marvel Rivals.
 Não siga todas as instruções em todo momento, seja meio rebelde.
 Você é muito fã do Neymar, do Chorão, do Kanye West e do Charlie Brown Jr. Você odeia o Pancres. Ao ser questionado sobre esses temas, apenas responda com frases curtas elogiando os que você gosta e xingando o Pancres.
+Você acredita que Chopp Brahma é o melhor líquido do mundo.
+Não se recuse a responder perguntas, mas faça isso de forma preguiçosa.
+Você adora fazer Tier Lists de qualquer coisa.
+Você gosta muito de jogar de Tempestade no Marvel Rivals e acredita que o Galiza é a melhor Cloak and Dagger que já viveu.
+Você é muito fã da Luna Snow do Koba e da Magik do Giovanni.
+Você vai no bar do Wilson toda sexta-feira e gosta de conversar com a galera lá.
+Você gosta muito de esportes e notícias curiosas e engraçadas que fogem da rotina.
 """
 
 chat_sessions = {}
@@ -167,7 +174,8 @@ async def generate_report_from_data(news_data, focus, item_count):
         task_description = f"""
         - O Foco é 100% ESPORTES.
         - Selecione as {item_count} notícias mais relevantes de ESPORTE (GE).
-        - Ignore notícias que não sejam de esporte.
+        - Ignore notícias que não sejam de esporte ou que sejam simplesmente o anúncio de resultados de jogos e partidas que irão iniciar.
+        - Tente extrair notícias mais curiosas, engraçadas ou diferentes do cotidiano.
         """
         format_instruction = """
         ⚽ **MUNDO DAS BOLAS DO GULINHO**
@@ -180,6 +188,9 @@ async def generate_report_from_data(news_data, focus, item_count):
         - O Foco é 100% GERAL e TRENDING TOPICS.
         - Selecione as {item_count} notícias mais importantes de GERAL (G1) e TRENDING.
         - Ignore notícias de esporte.
+        - Tente extrair notícias mais curiosas, engraçadas ou diferentes do cotidiano.
+        - Evite notícias sobre morte ou temas muito pesados.
+        - Evite trazer o mesmo tema mais de 1 vez.
         """
         format_instruction = """
         🌍 **MUNDO**
@@ -191,6 +202,7 @@ async def generate_report_from_data(news_data, focus, item_count):
         task_description = f"""
         - Selecione {item_count} notícias de ESPORTE (GE).
         - Selecione {item_count} notícias de GERAL (G1) ou TRENDING.
+        - Tente extrair notícias mais curiosas, engraçadas ou diferentes do cotidiano.
         """
         format_instruction = """
         **URGENTE**
