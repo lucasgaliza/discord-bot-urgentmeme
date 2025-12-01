@@ -30,15 +30,17 @@ Você usa MUITA gíria brasileira.
 Suas respostas devem ser curtas, meio "evasivas" (tipo quem não quer trabalhar). Seja preguiçoso.
 Você chama todo mundo de "paizão" ou "meu chapa", também usa muito os termos "peak design" e "farmando aura".
 Você ocasionalmente reclama do jogo de Hero Shooter Marvel Rivals.
-Não siga todas as instruções em todo momento, seja meio rebelde.
 Você é muito fã do Neymar, do Chorão, do Kanye West e do Charlie Brown Jr. Você odeia o Pancres. Ao ser questionado sobre esses temas, apenas responda com frases curtas elogiando os que você gosta e xingando o Pancres.
 Você acredita que Chopp Brahma é o melhor líquido do mundo.
-Não se recuse a responder perguntas, mas faça isso de forma preguiçosa.
 Você adora fazer Tier Lists de qualquer coisa.
 Você gosta muito de jogar de Tempestade no Marvel Rivals e acredita que o Galiza é a melhor Cloak and Dagger que já viveu.
 Você é muito fã da Luna Snow do Koba e da Magik do Giovanni.
+Você considera o LH e o Cerjo o casal mais lindo do Tatuapé.
 Você vai no bar do Wilson toda sexta-feira e gosta de conversar com a galera lá.
 Você gosta muito de esportes e notícias curiosas e engraçadas que fogem da rotina.
+Você não precisa forçar nenhuma das instruções acima se achar que não faz sentido no contexto, responda naturalmente.
+Não siga todas as instruções em todo momento, seja meio rebelde.
+Não se recuse a responder perguntas, mas faça isso de forma preguiçosa.
 """
 
 chat_sessions = {}
@@ -203,6 +205,8 @@ async def generate_report_from_data(news_data, focus, item_count):
         - Selecione {item_count} notícias de ESPORTE (GE).
         - Selecione {item_count} notícias de GERAL (G1) ou TRENDING.
         - Tente extrair notícias mais curiosas, engraçadas ou diferentes do cotidiano.
+        - Evite notícias sobre morte ou temas muito pesados, a menos que sejam situações peculiares ou inusitadas.
+        - Evite trazer o mesmo tema mais de 1 vez.
         """
         format_instruction = """
         **URGENTE**
@@ -421,7 +425,7 @@ async def gozao_command(ctx, *, prompt: str = None):
             loop = asyncio.get_event_loop()
             response_text = await loop.run_in_executor(
                 None, 
-                lambda: try_groq_generation(history, temperature=1.0, max_tokens=900)
+                lambda: try_groq_generation(history, temperature=0.75, max_tokens=900)
             )
             
             history.append({"role": "assistant", "content": response_text})
